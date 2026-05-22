@@ -19,6 +19,7 @@ const el = {
   voice: $("voice"), rate: $("rate"), pitch: $("pitch"), volume: $("volume"),
   rateVal: $("rateVal"), pitchVal: $("pitchVal"), volumeVal: $("volumeVal"),
   hint: $("hint"),
+  openFile: $("openFile"), fileInput: $("fileInput"),
 };
 
 // --- typed-text playback state ---
@@ -314,8 +315,10 @@ function renderState(state) {
   el.pause.disabled  = !playing;
   el.resume.disabled = !paused;
   el.stop.disabled   = !(playing || paused);
-  // Web Speech can't change voice mid-utterance, so block the picker until idle.
-  el.voice.disabled  = playing || paused;
+  // Web Speech can't change voice mid-utterance, and opening a fresh file
+  // mid-read would silently swap the text being spoken. Both lock until idle.
+  el.voice.disabled    = playing || paused;
+  el.openFile.disabled = playing || paused;
 
   el.status.className = "status" +
     (playing ? " is-active" : paused ? " is-paused" : "");
@@ -329,6 +332,122 @@ function renderState(state) {
 function doPause()  { window.speechSynthesis.pause();  pauseEstimator();  renderState("paused"); }
 function doResume() { window.speechSynthesis.resume(); resumeEstimator(); renderState("playing"); }
 function doStop()   { curUtterId++; window.speechSynthesis.cancel(); finishText("idle", false); }
+
+// --- file loading (PDF / DOCX / TXT) --------------------------------------
+// Libraries are lazy-loaded so the initial PWA shell stays tiny. After the
+// first use the service worker has them in cache, so subsequent uses are
+// instant and work offline.
+let pdfjsPromise = null;
+let mammothPromise = null;
+
+function getPdfjs() {
+  if (pdfjsPromise) return pdfjsPromise;
+  pdfjsPromise = import("./vendor/pdfjs/pdf.min.mjs").then((m) => {
+    m.GlobalWorkerOptions.workerSrc = "./vendor/pdfjs/pdf.worker.min.mjs";
+    return m;
+  }).catch((e) => { pdfjsPromise = null; throw e; });
+  return pdfjsPromise;
+}
+
+function getMammoth() {
+  if (mammothPromise) return mammothPromise;
+  mammothPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "./vendor/mammoth/mammoth.browser.min.js";
+    s.onload = () => resolve(window.mammoth);
+    s.onerror = () => {
+      mammothPromise = null;  // allow retry after a network blip
+      reject(new Error("mammoth.js failed to load"));
+    };
+    document.head.appendChild(s);
+  });
+  return mammothPromise;
+}
+
+async function extractPdfText(file) {
+  const pdfjs = await getPdfjs();
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjs.getDocument({ data: buf }).promise;
+  const out = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    out.push(content.items.map((it) => it.str).join(" "));
+  }
+  return out.join("\n\n");
+}
+
+async function extractDocxText(file) {
+  const mammoth = await getMammoth();
+  const buf = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer: buf });
+  return result.value || "";
+}
+
+async function loadFile(file) {
+  showHint("");
+  flashStatus("Extracting…");
+  el.openFile.disabled  = true;
+  el.speakText.disabled = true;
+  el.text.disabled      = true;
+  try {
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    const type = file.type || "";
+    let text;
+    if (ext === "pdf" || type === "application/pdf") {
+      text = await extractPdfText(file);
+    } else if (
+      ext === "docx" ||
+      type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ) {
+      text = await extractDocxText(file);
+    } else if (ext === "txt" || type.startsWith("text/")) {
+      text = await file.text();
+    } else {
+      throw new Error("Unsupported file type — try PDF, DOCX, or TXT.");
+    }
+    text = (text || "").trim();
+    el.text.value = text;
+    el.count.textContent = text.length;
+    try { localStorage.setItem(DRAFT_KEY, text); } catch (_) {}
+    if (text) {
+      flashStatus("Ready — tap Read text");
+    } else {
+      flashStatus("Idle");
+      showHint("This file has no extractable text (image-only PDF or empty document).");
+    }
+  } catch (e) {
+    flashStatus("Idle");
+    showHint("Couldn't read file: " + (e && e.message ? e.message : "unknown error"));
+  } finally {
+    el.openFile.disabled  = false;
+    el.speakText.disabled = false;
+    el.text.disabled      = false;
+  }
+}
+
+// --- Web Share Target pickup ----------------------------------------------
+// SW handled POST /share/ -> stashed the file in the share-pending cache and
+// redirected to ./?share=1. We pull it out here and feed it through loadFile.
+async function checkPendingShare() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("share") !== "1") return;
+  const name = params.get("name") || "shared";
+  const type = params.get("type") || "";
+  // Strip the query so a refresh doesn't re-trigger.
+  history.replaceState({}, "", location.pathname);
+  try {
+    if (!("caches" in window)) return;
+    const cache = await caches.open("share-pending");
+    const resp = await cache.match("shared-file");
+    if (!resp) return;
+    const blob = await resp.blob();
+    await cache.delete("shared-file");
+    await loadFile(new File([blob], name, { type }));
+  } catch (_) {
+    showHint("Couldn't load the shared file.");
+  }
+}
 
 // --- init ------------------------------------------------------------------
 function init() {
@@ -378,6 +497,17 @@ function init() {
   el.pause.addEventListener("click", doPause);
   el.resume.addEventListener("click", doResume);
   el.stop.addEventListener("click", doStop);
+
+  // File picker -> hidden <input type="file"> -> extractor.
+  el.openFile.addEventListener("click", () => el.fileInput.click());
+  el.fileInput.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";  // allow re-selecting the same file
+    if (f) loadFile(f);
+  });
+
+  // If we got here via the Web Share Target, pick up the file the SW stashed.
+  checkPendingShare();
 
   // Clean up if the document is being torn down (tab close / navigation).
   window.addEventListener("pagehide", () => {

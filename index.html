@@ -39,7 +39,13 @@
     </header>
 
     <main>
-      <label class="field-label" for="text">Text to read</label>
+      <div class="field-row">
+        <label class="field-label" for="text">Text to read</label>
+        <button id="openFile" class="link-btn" type="button">Open file&hellip;</button>
+      </div>
+      <input id="fileInput" type="file"
+             accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+             hidden />
       <textarea id="text"
                 placeholder="Type or paste text here&hellip;"
                 spellcheck="false"
