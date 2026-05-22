@@ -1,0 +1,296 @@
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Hanken+Grotesk:wght@400;500;600&display=swap');
+
+:root {
+  --paper:  #f3efe6;
+  --card:   #fbfaf6;
+  --ink:    #211e1a;
+  --muted:  #756f63;
+  --line:   #e0d9ca;
+  --accent: #2f5a8f;
+  --accent-dark: #264a76;
+  --stop:   #a4503f;
+  --serif:  'Newsreader', Georgia, 'Times New Roman', serif;
+  --sans:   'Hanken Grotesk', ui-sans-serif, -apple-system, Segoe UI, sans-serif;
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 0px);
+  --safe-right:  env(safe-area-inset-right, 0px);
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  /* Lock the page so iOS standalone PWAs don't rubber-band. */
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding:
+    calc(var(--safe-top)    + 18px)
+    calc(var(--safe-right)  + 18px)
+    calc(var(--safe-bottom) + 16px)
+    calc(var(--safe-left)   + 18px);
+  max-width: 720px;
+  margin: 0 auto;
+  overflow-y: auto;
+}
+
+/* ---- Masthead ---- */
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.mark {
+  width: 44px; height: 44px;
+  flex-shrink: 0;
+  display: grid; place-items: center;
+  color: var(--accent);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+.titles h1 {
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.status {
+  font-size: 11.5px;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+.status.is-active { color: var(--accent); }
+.status.is-paused { color: var(--stop); }
+
+/* ---- Main column ---- */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-top: 16px;
+  min-height: 0;
+}
+
+.field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+textarea,
+.preview {
+  width: 100%;
+  flex: 1 1 200px;
+  min-height: 160px;
+  padding: 12px 13px;
+  font-family: var(--serif);
+  font-size: 16px;   /* >= 16px keeps iOS from auto-zooming on focus */
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+textarea {
+  resize: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(47, 90, 143, 0.13);
+}
+
+/* The preview takes the place of the textarea while reading. */
+.preview {
+  overflow-y: auto;
+  border-color: var(--accent);
+  line-height: 1.65;
+}
+.preview .w {
+  border-radius: 3px;
+  transition: background-color .1s ease;
+}
+.preview .hl {
+  background: #ffd23f;
+  color: #1a1a1a;
+  box-shadow: 0 0 0 2px #ffd23f;
+}
+
+.counter {
+  text-align: right;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+/* ---- Buttons ---- */
+.btn {
+  display: block;
+  width: 100%;
+  min-height: 50px;
+  margin-top: 12px;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 14px;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: transform .06s ease, background .15s ease, border-color .15s ease;
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+}
+.btn-primary:hover,
+.btn-primary:focus-visible {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+  outline: none;
+}
+.btn:disabled { opacity: 0.55; cursor: default; }
+
+/* ---- Transport ---- */
+.transport {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.chip {
+  flex: 1;
+  min-height: 44px;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 10px 4px;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, opacity .15s ease;
+}
+.chip:hover:not(:disabled) { background: #ece6d9; }
+.chip-stop:hover:not(:disabled) {
+  background: var(--stop);
+  color: #fff;
+  border-color: var(--stop);
+}
+.chip:disabled { opacity: 0.4; cursor: default; }
+
+/* ---- Settings (collapsed by default on mobile) ---- */
+.settings {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.settings summary {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  padding: 6px 0;
+  min-height: 32px;
+}
+.settings summary::-webkit-details-marker { display: none; }
+.settings summary::after {
+  content: '+';
+  float: right;
+  font-size: 16px;
+  line-height: 1;
+}
+.settings[open] summary::after { content: '\2212'; }
+
+.setting { margin-top: 12px; }
+.setting label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.setting .val {
+  font-family: var(--serif);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+select {
+  width: 100%;
+  font-family: var(--sans);
+  font-size: 14px;
+  padding: 10px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  cursor: pointer;
+}
+select:focus { outline: none; border-color: var(--accent); }
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--card);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--card);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
+/* ---- Inline hint (transient warnings, e.g. unsupported browser) ---- */
+.hint {
+  margin-top: 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  background: rgba(164, 80, 63, 0.08);
+  color: var(--stop);
+  border-radius: 9px;
+  border: 1px solid rgba(164, 80, 63, 0.25);
+}
