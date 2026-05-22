@@ -4,7 +4,7 @@
 // Vendor/ libraries (pdf.js, mammoth) are intentionally NOT pre-cached —
 // they're lazy-loaded and picked up by runtime caching the first time.
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const STATIC = 'read-aloud-static-' + VERSION;
 const SHARE_PENDING = 'share-pending';
 const SHELL = [

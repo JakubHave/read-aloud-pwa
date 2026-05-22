@@ -258,6 +258,36 @@ function finishText(state, naturalEnd) {
   renderState(state || "idle");
 }
 
+// Chrome's SpeechSynthesis silently stops after a few sentences on long
+// utterances. The canonical workaround is to chunk the text into many short
+// utterances and let speak() queue them — each chunk is its own checkpoint.
+// The regex preserves every character so concatenating chunks reproduces the
+// input exactly, which keeps onboundary's per-chunk charIndex alignable with
+// the global text via a precomputed chunkOffset[].
+const MAX_CHUNK_CHARS = 600;
+function splitIntoChunks(text) {
+  if (!text) return [];
+  const re = /[^.!?]+[.!?]*|[.!?]+/g;
+  const sentences = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m[0]) sentences.push(m[0]);
+  }
+  if (sentences.length === 0) return [text];
+  const chunks = [];
+  let buf = "";
+  for (const s of sentences) {
+    if (buf && buf.length + s.length > MAX_CHUNK_CHARS) {
+      chunks.push(buf);
+      buf = s;
+    } else {
+      buf += s;
+    }
+  }
+  if (buf) chunks.push(buf);
+  return chunks;
+}
+
 function readText() {
   if (!window.speechSynthesis) {
     showHint("This browser doesn't support speech synthesis.");
@@ -274,33 +304,63 @@ function readText() {
   buildPreview(text);
   showPreview(true);
 
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.rate = parseFloat(el.rate.value);
-  utter.pitch = parseFloat(el.pitch.value);
-  utter.volume = parseFloat(el.volume.value);
-  const voice = findVoice(el.voice.value);
-  if (voice) utter.voice = voice;
+  const voice  = findVoice(el.voice.value);
+  const rate   = parseFloat(el.rate.value);
+  const pitch  = parseFloat(el.pitch.value);
+  const volume = parseFloat(el.volume.value);
 
-  utter.onboundary = (e) => {
-    if (myId !== curUtterId) return;
-    if (e.name && e.name !== "word") return;
-    realBoundary = true;
-    stopEstimator();
-    highlight(e.charIndex);
-  };
-  utter.onstart = () => {
-    if (myId !== curUtterId) return;
-    startEstimator(utter.rate, voice ? voice.name : (el.voice.value || ""), text.length);
-    renderState("playing");
-  };
-  utter.onend   = () => { if (myId === curUtterId) finishText("idle", true);  };
-  utter.onerror = () => { if (myId === curUtterId) finishText("idle", false); };
+  const chunks = splitIntoChunks(text);
+  const offsets = [];
+  let acc = 0;
+  for (const c of chunks) { offsets.push(acc); acc += c.length; }
 
-  window.speechSynthesis.speak(utter);
+  // Shared error handler: bump curUtterId first so the cascade of error
+  // events on the remaining queued chunks all see the stale id and skip.
+  const onError = () => {
+    if (myId !== curUtterId) return;
+    curUtterId++;
+    try { window.speechSynthesis.cancel(); } catch (_) {}
+    finishText("idle", false);
+  };
+
+  for (let i = 0; i < chunks.length; i++) {
+    const utter = new SpeechSynthesisUtterance(chunks[i]);
+    utter.rate = rate;
+    utter.pitch = pitch;
+    utter.volume = volume;
+    if (voice) utter.voice = voice;
+
+    const chunkOffset = offsets[i];
+    const isFirst = i === 0;
+    const isLast  = i === chunks.length - 1;
+
+    utter.onboundary = (e) => {
+      if (myId !== curUtterId) return;
+      if (e.name && e.name !== "word") return;
+      realBoundary = true;
+      stopEstimator();
+      highlight(chunkOffset + e.charIndex);
+    };
+    // Only the first chunk starts the estimator; only the last chunk ends
+    // the read. Everything in between is just a continuation of the queue.
+    if (isFirst) {
+      utter.onstart = () => {
+        if (myId !== curUtterId) return;
+        startEstimator(rate, voice ? voice.name : (el.voice.value || ""), text.length);
+        renderState("playing");
+      };
+    }
+    if (isLast) {
+      utter.onend = () => { if (myId === curUtterId) finishText("idle", true); };
+    }
+    utter.onerror = onError;
+
+    window.speechSynthesis.speak(utter);
+  }
   renderState("playing");
 
-  // Chrome silently stops long utterances; a 9s pause/resume nudge resets its
-  // timer. Only nudge while actively speaking — never un-pause a deliberate pause.
+  // Belt-and-suspenders: even chunked, a long queued read can drift if the
+  // engine pauses internally. The 9s pause/resume nudge keeps it ticking.
   stopKeepAlive();
   keepAlive = setInterval(() => {
     const ss = window.speechSynthesis;
